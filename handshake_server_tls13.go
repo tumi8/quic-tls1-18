@@ -274,7 +274,7 @@ func (hs *serverHandshakeStateTLS13) checkForResumption() error {
 			continue
 		}
 		sessionState := new(sessionStateTLS13)
-		if ok := sessionState.unmarshal(plaintext); !ok {
+		if ok := sessionState.unmarshal(plaintext, c); !ok {
 			continue
 		}
 

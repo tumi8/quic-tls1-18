@@ -125,6 +125,20 @@ type Conn struct {
 	used0RTT bool
 
 	tmp [16]byte
+
+	serverHello *serverHelloMsg
+	clientHello *clientHelloMsg
+
+	serverExtensions            []Extension
+	serverEncryptedExtensions   []Extension
+	serverCertRequestExtensions []Extension
+	helloRetryRequestExtensions []Extension
+	certificateExtensions       []Extension
+
+	sendAlerts []alert
+	recvAlerts []alert
+
+	errors []error
 }
 
 // Access to net.Conn methods.
@@ -1139,7 +1153,7 @@ func (c *Conn) readHandshake() (any, error) {
 	// so pass in a fresh copy that won't be overwritten.
 	data = append([]byte(nil), data...)
 
-	if !m.unmarshal(data) {
+	if !m.unmarshal(data, c) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
 	return m, nil
@@ -1549,7 +1563,7 @@ func (c *Conn) ConnectionStateWith0RTT() ConnectionStateWith0RTT {
 }
 
 func (c *Conn) connectionStateLocked() ConnectionState {
-	var state connectionState
+	var state ConnectionState
 	state.HandshakeComplete = c.handshakeComplete()
 	state.Version = c.vers
 	state.NegotiatedProtocol = c.clientProtocol
@@ -1573,7 +1587,31 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 	} else {
 		state.ekm = c.ekm
 	}
+
+	// TLS analysis
+	if c.serverHello != nil {
+		newHello := NewServerHelloMsg(c.serverHello)
+		state.ServerHello = &newHello
+	}
+	state.ServerExtensions = c.serverExtensions
+	state.ServerEncryptedExtensions = c.serverEncryptedExtensions
+	state.ServerCertRequestExtensions = c.serverCertRequestExtensions
+	state.HelloRetryRequestExtensions = c.helloRetryRequestExtensions
+	state.CertificateExtensions = c.certificateExtensions
+	state.ClientHello = NewClientHelloMsg(c.clientHello)
+	state.SendAlerts = parseAlerts(c.sendAlerts)
+	state.RecvAlerts = parseAlerts(c.recvAlerts)
+	state.Errors = c.errors
+
 	return toConnectionState(state)
+}
+
+func parseAlerts(alerts []alert) []Alert {
+	result := make([]Alert, len(alerts))
+	for i := range alerts {
+		result[i] = Alert(alerts[i])
+	}
+	return result
 }
 
 // OCSPResponse returns the stapled OCSP response from the TLS server, if

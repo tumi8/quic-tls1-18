@@ -52,7 +52,7 @@ func (m *sessionState) marshal() []byte {
 	return b.BytesOrPanic()
 }
 
-func (m *sessionState) unmarshal(data []byte) bool {
+func (m *sessionState) unmarshal(data []byte, conn *Conn) bool {
 	*m = sessionState{usedOldKey: m.usedOldKey}
 	s := cryptobyte.String(data)
 	if ok := s.ReadUint16(&m.vers) &&
@@ -114,7 +114,7 @@ func (m *sessionStateTLS13) marshal() []byte {
 	return b.BytesOrPanic()
 }
 
-func (m *sessionStateTLS13) unmarshal(data []byte) bool {
+func (m *sessionStateTLS13) unmarshal(data []byte, conn *Conn) bool {
 	*m = sessionStateTLS13{}
 	s := cryptobyte.String(data)
 	var version uint16
@@ -128,7 +128,7 @@ func (m *sessionStateTLS13) unmarshal(data []byte) bool {
 		readUint64(&s, &m.createdAt) &&
 		readUint8LengthPrefixed(&s, &m.resumptionSecret) &&
 		len(m.resumptionSecret) != 0 &&
-		unmarshalCertificate(&s, &m.certificate) &&
+		unmarshalCertificate(&s, &m.certificate, conn) &&
 		s.ReadUint32(&m.maxEarlyData) &&
 		readUint8LengthPrefixed(&s, &alpn) &&
 		readUint16LengthPrefixed(&s, &m.appData) &&

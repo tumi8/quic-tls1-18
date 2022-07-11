@@ -232,7 +232,7 @@ func TestErrorOnOldTLSVersions(t *testing.T) {
 			}
 			if b[0] == typeClientHello {
 				m := new(clientHelloMsg)
-				if !m.unmarshal(b) {
+				if !m.unmarshal(b, nil) {
 					panic("unmarshal failed")
 				}
 				m.raw = nil // need to reset, so marshal() actually marshals the changes
@@ -381,7 +381,7 @@ func TestForbiddenZeroRTT(t *testing.T) {
 			}
 			if b[0] == typeClientHello {
 				msg := &clientHelloMsg{}
-				if ok := msg.unmarshal(b); !ok {
+				if ok := msg.unmarshal(b, nil); !ok {
 					panic("unmarshaling failed")
 				}
 				msg.earlyData = true
@@ -464,7 +464,7 @@ func TestZeroRTTKeys(t *testing.T) {
 			if b, ok := c.([]byte); ok {
 				if b[0] == typeEncryptedExtensions {
 					var msg encryptedExtensionsMsg
-					if ok := msg.unmarshal(b); !ok {
+					if ok := msg.unmarshal(b, nil); !ok {
 						panic("failed to unmarshal EncryptedExtensions")
 					}
 					serverEarlyData = msg.earlyData
@@ -488,7 +488,7 @@ func TestZeroRTTKeys(t *testing.T) {
 			if b, ok := c.([]byte); ok {
 				if b[0] == typeClientHello {
 					var msg clientHelloMsg
-					if ok := msg.unmarshal(b); !ok {
+					if ok := msg.unmarshal(b, nil); !ok {
 						panic("failed to unmarshal ClientHello")
 					}
 					clientEarlyData = msg.earlyData

@@ -234,7 +234,10 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 		return err
 	}
 
+	c.clientHello = hello
+
 	serverHello, ok := msg.(*serverHelloMsg)
+	c.serverHello = serverHello
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(serverHello, msg)

@@ -5,6 +5,7 @@
 package qtls
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -93,6 +94,77 @@ type clientHelloMsg struct {
 	pskIdentities                    []pskIdentity
 	pskBinders                       [][]byte
 	additionalExtensions             []Extension
+}
+
+type ClientHelloMsg struct {
+	Raw                              []byte
+	Vers                             uint16
+	Random                           []byte
+	SessionId                        []byte
+	CipherSuites                     []uint16
+	CompressionMethods               []uint8
+	ServerName                       string
+	OcspStapling                     bool
+	SupportedCurves                  []CurveID
+	SupportedPoints                  []uint8
+	TicketSupported                  bool
+	SessionTicket                    []uint8
+	SupportedSignatureAlgorithms     []SignatureScheme
+	SupportedSignatureAlgorithmsCert []SignatureScheme
+	SecureRenegotiationSupported     bool
+	SecureRenegotiation              []byte
+	AlpnProtocols                    []string
+	Scts                             bool
+	SupportedVersions                []uint16
+	Cookie                           []byte
+	KeyShares                        []KeyShare
+	EarlyData                        bool
+	PskModes                         []uint8
+	PskIdentities                    []pskIdentity
+	PskBinders                       [][]byte
+}
+
+func NewClientHelloMsg(m *clientHelloMsg) ClientHelloMsg {
+	if m == nil {
+		return ClientHelloMsg{}
+	}
+	return ClientHelloMsg{
+		Raw:                              m.raw,
+		Vers:                             m.vers,
+		Random:                           m.random,
+		SessionId:                        m.sessionId,
+		CipherSuites:                     m.cipherSuites,
+		CompressionMethods:               m.compressionMethods,
+		ServerName:                       m.serverName,
+		OcspStapling:                     m.ocspStapling,
+		SupportedCurves:                  m.supportedCurves,
+		SupportedPoints:                  m.supportedPoints,
+		TicketSupported:                  m.ticketSupported,
+		SessionTicket:                    m.sessionTicket,
+		SupportedSignatureAlgorithms:     m.supportedSignatureAlgorithms,
+		SupportedSignatureAlgorithmsCert: m.supportedSignatureAlgorithmsCert,
+		SecureRenegotiationSupported:     m.secureRenegotiationSupported,
+		SecureRenegotiation:              m.secureRenegotiation,
+		AlpnProtocols:                    m.alpnProtocols,
+		Scts:                             m.scts,
+		SupportedVersions:                m.supportedVersions,
+		Cookie:                           m.cookie,
+		KeyShares:                        exportKeyshare(m.keyShares),
+		EarlyData:                        m.earlyData,
+		PskModes:                         m.pskModes,
+		PskIdentities:                    m.pskIdentities,
+		PskBinders:                       m.pskBinders,
+	}
+}
+func exportKeyshare(k []keyShare) []KeyShare {
+	var array []KeyShare
+	for _, val := range k {
+		array = append(array, KeyShare{
+			Group: val.group,
+			Data:  val.data,
+		})
+	}
+	return array
 }
 
 func (m *clientHelloMsg) marshal() []byte {
@@ -350,7 +422,7 @@ func (m *clientHelloMsg) updateBinders(pskBinders [][]byte) {
 	}
 }
 
-func (m *clientHelloMsg) unmarshal(data []byte) bool {
+func (m *clientHelloMsg) unmarshal(data []byte, conn *Conn) bool {
 	*m = clientHelloMsg{raw: data}
 	s := cryptobyte.String(data)
 
@@ -619,6 +691,60 @@ type serverHelloMsg struct {
 	selectedGroup CurveID
 }
 
+type ServerHelloMsg struct {
+	Raw                          []byte
+	Vers                         uint16
+	Random                       []byte
+	SessionId                    []byte
+	CipherSuite                  uint16
+	CompressionMethod            uint8
+	OcspStapling                 bool
+	TicketSupported              bool
+	SecureRenegotiationSupported bool
+	SecureRenegotiation          []byte
+	AlpnProtocol                 string
+	Scts                         [][]byte
+	SupportedVersion             uint16
+	ServerShare                  KeyShare
+	SelectedIdentityPresent      bool
+	SelectedIdentity             uint16
+	SupportedPoints              []uint8
+
+	// HelloRetryRequest extensions
+	Cookie        []byte
+	SelectedGroup CurveID
+}
+
+func NewServerHelloMsg(m *serverHelloMsg) ServerHelloMsg {
+	if m == nil {
+		return ServerHelloMsg{}
+	}
+	return ServerHelloMsg{
+		Raw:                          m.raw,
+		Vers:                         m.vers,
+		Random:                       m.random,
+		SessionId:                    m.sessionId,
+		CipherSuite:                  m.cipherSuite,
+		CompressionMethod:            m.compressionMethod,
+		OcspStapling:                 m.ocspStapling,
+		TicketSupported:              m.ticketSupported,
+		SecureRenegotiationSupported: m.secureRenegotiationSupported,
+		SecureRenegotiation:          m.secureRenegotiation,
+		AlpnProtocol:                 m.alpnProtocol,
+		Scts:                         m.scts,
+		SupportedVersion:             m.supportedVersion,
+		ServerShare: KeyShare{
+			Group: m.serverShare.group,
+			Data:  m.serverShare.data,
+		},
+		SelectedIdentityPresent: m.selectedIdentityPresent,
+		SelectedIdentity:        m.selectedIdentity,
+		SupportedPoints:         m.supportedPoints,
+		Cookie:                  m.cookie,
+		SelectedGroup:           m.selectedGroup,
+	}
+}
+
 func (m *serverHelloMsg) marshal() []byte {
 	if m.raw != nil {
 		return m.raw
@@ -735,7 +861,7 @@ func (m *serverHelloMsg) marshal() []byte {
 	return m.raw
 }
 
-func (m *serverHelloMsg) unmarshal(data []byte) bool {
+func (m *serverHelloMsg) unmarshal(data []byte, conn *Conn) bool {
 	*m = serverHelloMsg{raw: data}
 	s := cryptobyte.String(data)
 
@@ -757,12 +883,26 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 		return false
 	}
 
+	isHRR := bytes.Equal(m.random, helloRetryRequestRandom)
+	if isHRR {
+		conn.helloRetryRequestExtensions = make([]Extension, 0)
+	} else {
+		conn.serverExtensions = make([]Extension, 0)
+	}
+
 	for !extensions.Empty() {
 		var extension uint16
 		var extData cryptobyte.String
 		if !extensions.ReadUint16(&extension) ||
 			!extensions.ReadUint16LengthPrefixed(&extData) {
 			return false
+		}
+
+		// Here we have the Extension and Data before unknown ones are discarded
+		if isHRR {
+			conn.helloRetryRequestExtensions = append(conn.helloRetryRequestExtensions, Extension{Type: extension, Data: extData})
+		} else {
+			conn.serverExtensions = append(conn.serverExtensions, Extension{Type: extension, Data: extData})
 		}
 
 		switch extension {
@@ -890,7 +1030,7 @@ func (m *encryptedExtensionsMsg) marshal() []byte {
 	return m.raw
 }
 
-func (m *encryptedExtensionsMsg) unmarshal(data []byte) bool {
+func (m *encryptedExtensionsMsg) unmarshal(data []byte, conn *Conn) bool {
 	*m = encryptedExtensionsMsg{raw: data}
 	s := cryptobyte.String(data)
 
@@ -900,6 +1040,8 @@ func (m *encryptedExtensionsMsg) unmarshal(data []byte) bool {
 		return false
 	}
 
+	conn.serverEncryptedExtensions = make([]Extension, 0)
+
 	for !extensions.Empty() {
 		var ext uint16
 		var extData cryptobyte.String
@@ -907,6 +1049,10 @@ func (m *encryptedExtensionsMsg) unmarshal(data []byte) bool {
 			!extensions.ReadUint16LengthPrefixed(&extData) {
 			return false
 		}
+
+		// Here we have the Extension and Data before unknown ones are discarded
+		conn.serverEncryptedExtensions = append(conn.serverEncryptedExtensions, Extension{Type: ext, Data: extData})
+
 
 		switch ext {
 		case extensionALPN:
@@ -943,7 +1089,7 @@ func (m *endOfEarlyDataMsg) marshal() []byte {
 	return x
 }
 
-func (m *endOfEarlyDataMsg) unmarshal(data []byte) bool {
+func (m *endOfEarlyDataMsg) unmarshal(data []byte, conn *Conn) bool {
 	return len(data) == 4
 }
 
@@ -971,7 +1117,7 @@ func (m *keyUpdateMsg) marshal() []byte {
 	return m.raw
 }
 
-func (m *keyUpdateMsg) unmarshal(data []byte) bool {
+func (m *keyUpdateMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 	s := cryptobyte.String(data)
 
@@ -1031,7 +1177,7 @@ func (m *newSessionTicketMsgTLS13) marshal() []byte {
 	return m.raw
 }
 
-func (m *newSessionTicketMsgTLS13) unmarshal(data []byte) bool {
+func (m *newSessionTicketMsgTLS13) unmarshal(data []byte, conn *Conn) bool {
 	*m = newSessionTicketMsgTLS13{raw: data}
 	s := cryptobyte.String(data)
 
@@ -1146,7 +1292,7 @@ func (m *certificateRequestMsgTLS13) marshal() []byte {
 	return m.raw
 }
 
-func (m *certificateRequestMsgTLS13) unmarshal(data []byte) bool {
+func (m *certificateRequestMsgTLS13) unmarshal(data []byte, conn *Conn) bool {
 	*m = certificateRequestMsgTLS13{raw: data}
 	s := cryptobyte.String(data)
 
@@ -1158,6 +1304,8 @@ func (m *certificateRequestMsgTLS13) unmarshal(data []byte) bool {
 		return false
 	}
 
+	conn.serverCertRequestExtensions = make([]Extension, 0)
+
 	for !extensions.Empty() {
 		var extension uint16
 		var extData cryptobyte.String
@@ -1165,6 +1313,8 @@ func (m *certificateRequestMsgTLS13) unmarshal(data []byte) bool {
 			!extensions.ReadUint16LengthPrefixed(&extData) {
 			return false
 		}
+
+		conn.serverCertRequestExtensions = append(conn.serverCertRequestExtensions, Extension{Type: extension, Data: extData})
 
 		switch extension {
 		case extensionStatusRequest:
@@ -1262,7 +1412,7 @@ func (m *certificateMsg) marshal() (x []byte) {
 	return
 }
 
-func (m *certificateMsg) unmarshal(data []byte) bool {
+func (m *certificateMsg) unmarshal(data []byte, conn *Conn) bool {
 	if len(data) < 7 {
 		return false
 	}
@@ -1367,14 +1517,14 @@ func marshalCertificate(b *cryptobyte.Builder, certificate Certificate) {
 	})
 }
 
-func (m *certificateMsgTLS13) unmarshal(data []byte) bool {
+func (m *certificateMsgTLS13) unmarshal(data []byte, conn *Conn) bool {
 	*m = certificateMsgTLS13{raw: data}
 	s := cryptobyte.String(data)
 
 	var context cryptobyte.String
 	if !s.Skip(4) || // message type and uint24 length field
 		!s.ReadUint8LengthPrefixed(&context) || !context.Empty() ||
-		!unmarshalCertificate(&s, &m.certificate) ||
+		!unmarshalCertificate(&s, &m.certificate, conn) ||
 		!s.Empty() {
 		return false
 	}
@@ -1385,7 +1535,7 @@ func (m *certificateMsgTLS13) unmarshal(data []byte) bool {
 	return true
 }
 
-func unmarshalCertificate(s *cryptobyte.String, certificate *Certificate) bool {
+func unmarshalCertificate(s *cryptobyte.String, certificate *Certificate, conn *Conn) bool {
 	var certList cryptobyte.String
 	if !s.ReadUint24LengthPrefixed(&certList) {
 		return false
@@ -1398,6 +1548,7 @@ func unmarshalCertificate(s *cryptobyte.String, certificate *Certificate) bool {
 			return false
 		}
 		certificate.Certificate = append(certificate.Certificate, cert)
+		conn.certificateExtensions = make([]Extension, 0)
 		for !extensions.Empty() {
 			var extension uint16
 			var extData cryptobyte.String
@@ -1409,6 +1560,8 @@ func unmarshalCertificate(s *cryptobyte.String, certificate *Certificate) bool {
 				// This library only supports OCSP and SCT for leaf certificates.
 				continue
 			}
+
+			conn.certificateExtensions = append(conn.certificateExtensions, Extension{Type: extension, Data: extData})
 
 			switch extension {
 			case extensionStatusRequest:
@@ -1466,7 +1619,7 @@ func (m *serverKeyExchangeMsg) marshal() []byte {
 	return x
 }
 
-func (m *serverKeyExchangeMsg) unmarshal(data []byte) bool {
+func (m *serverKeyExchangeMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 	if len(data) < 4 {
 		return false
@@ -1498,7 +1651,7 @@ func (m *certificateStatusMsg) marshal() []byte {
 	return m.raw
 }
 
-func (m *certificateStatusMsg) unmarshal(data []byte) bool {
+func (m *certificateStatusMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 	s := cryptobyte.String(data)
 
@@ -1520,7 +1673,7 @@ func (m *serverHelloDoneMsg) marshal() []byte {
 	return x
 }
 
-func (m *serverHelloDoneMsg) unmarshal(data []byte) bool {
+func (m *serverHelloDoneMsg) unmarshal(data []byte, conn *Conn) bool {
 	return len(data) == 4
 }
 
@@ -1545,7 +1698,7 @@ func (m *clientKeyExchangeMsg) marshal() []byte {
 	return x
 }
 
-func (m *clientKeyExchangeMsg) unmarshal(data []byte) bool {
+func (m *clientKeyExchangeMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 	if len(data) < 4 {
 		return false
@@ -1578,7 +1731,7 @@ func (m *finishedMsg) marshal() []byte {
 	return m.raw
 }
 
-func (m *finishedMsg) unmarshal(data []byte) bool {
+func (m *finishedMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 	s := cryptobyte.String(data)
 	return s.Skip(1) &&
@@ -1652,7 +1805,7 @@ func (m *certificateRequestMsg) marshal() (x []byte) {
 	return
 }
 
-func (m *certificateRequestMsg) unmarshal(data []byte) bool {
+func (m *certificateRequestMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 
 	if len(data) < 5 {
@@ -1755,7 +1908,7 @@ func (m *certificateVerifyMsg) marshal() (x []byte) {
 	return m.raw
 }
 
-func (m *certificateVerifyMsg) unmarshal(data []byte) bool {
+func (m *certificateVerifyMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 	s := cryptobyte.String(data)
 
@@ -1797,7 +1950,7 @@ func (m *newSessionTicketMsg) marshal() (x []byte) {
 	return
 }
 
-func (m *newSessionTicketMsg) unmarshal(data []byte) bool {
+func (m *newSessionTicketMsg) unmarshal(data []byte, conn *Conn) bool {
 	m.raw = data
 
 	if len(data) < 10 {
@@ -1826,6 +1979,6 @@ func (*helloRequestMsg) marshal() []byte {
 	return []byte{typeHelloRequest, 0, 0, 0}
 }
 
-func (*helloRequestMsg) unmarshal(data []byte) bool {
+func (*helloRequestMsg) unmarshal(data []byte, conn *Conn) bool {
 	return len(data) == 4
 }

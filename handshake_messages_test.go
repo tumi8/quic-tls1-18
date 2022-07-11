@@ -57,7 +57,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 			m1 := v.Interface().(handshakeMessage)
 			marshaled := m1.marshal()
 			m2 := iface.(handshakeMessage)
-			if !m2.unmarshal(marshaled) {
+			if !m2.unmarshal(marshaled, &Conn{}) {
 				t.Errorf("#%d failed to unmarshal %#v %x", i, m1, marshaled)
 				break
 			}
@@ -75,7 +75,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 				// data is optional and the length of the
 				// Finished varies across versions.
 				for j := 0; j < len(marshaled); j++ {
-					if m2.unmarshal(marshaled[0:j]) {
+					if m2.unmarshal(marshaled[0:j], nil) {
 						t.Errorf("#%d unmarshaled a prefix of length %d of %#v", i, j, m1)
 						break
 					}
@@ -94,7 +94,7 @@ func TestFuzz(t *testing.T) {
 			len := rand.Intn(100)
 			bytes := randomBytes(len, rand)
 			// This just looks for crashes due to bounds errors etc.
-			m.unmarshal(bytes)
+			m.unmarshal(bytes, nil)
 		}
 	}
 }
@@ -437,7 +437,7 @@ func TestRejectEmptySCTList(t *testing.T) {
 	serverHelloBytes := serverHello.marshal()
 
 	var serverHelloCopy serverHelloMsg
-	if !serverHelloCopy.unmarshal(serverHelloBytes) {
+	if !serverHelloCopy.unmarshal(serverHelloBytes, &Conn{}) {
 		t.Fatal("Failed to unmarshal initial message")
 	}
 
@@ -462,7 +462,7 @@ func TestRejectEmptySCTList(t *testing.T) {
 	serverHelloEmptySCT[42] = byte((len(serverHelloEmptySCT) - 44) >> 8)
 	serverHelloEmptySCT[43] = byte((len(serverHelloEmptySCT) - 44))
 
-	if serverHelloCopy.unmarshal(serverHelloEmptySCT) {
+	if serverHelloCopy.unmarshal(serverHelloEmptySCT, &Conn{}) {
 		t.Fatal("Unmarshaled ServerHello with empty SCT list")
 	}
 }
@@ -480,7 +480,7 @@ func TestRejectEmptySCT(t *testing.T) {
 	serverHelloBytes := serverHello.marshal()
 
 	var serverHelloCopy serverHelloMsg
-	if serverHelloCopy.unmarshal(serverHelloBytes) {
+	if serverHelloCopy.unmarshal(serverHelloBytes, &Conn{}) {
 		t.Fatal("Unmarshaled ServerHello with zero-length SCT")
 	}
 }

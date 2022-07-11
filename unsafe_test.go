@@ -81,7 +81,7 @@ func TestConnectionStateReinterpretCast(t *testing.T) {
 	var ekmLabel string
 	var ekmContext []byte
 	var ekmLength int
-	state := connectionState{
+	state := ConnectionState{
 		Version:            1234,
 		HandshakeComplete:  true,
 		DidResume:          true,

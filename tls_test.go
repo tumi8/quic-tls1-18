@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -759,7 +760,7 @@ func TestCloneFuncFields(t *testing.T) {
 			called |= 1 << 4
 			return nil
 		},
-		VerifyConnection: func(ConnectionState) error {
+		VerifyConnection: func(tls.ConnectionState) error {
 			called |= 1 << 5
 			return nil
 		},
@@ -772,7 +773,7 @@ func TestCloneFuncFields(t *testing.T) {
 	c2.GetClientCertificate(nil)
 	c2.GetConfigForClient(nil)
 	c2.VerifyPeerCertificate(nil, nil)
-	c2.VerifyConnection(ConnectionState{})
+	c2.VerifyConnection(tls.ConnectionState{})
 
 	if called != (1<<expectedCount)-1 {
 		t.Fatalf("expected %d calls but saw calls %b", expectedCount, called)

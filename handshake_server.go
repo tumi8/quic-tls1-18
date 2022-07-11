@@ -429,7 +429,7 @@ func (hs *serverHandshakeState) checkForResumption() bool {
 		return false
 	}
 	hs.sessionState = &sessionState{usedOldKey: usedOldKey}
-	ok := hs.sessionState.unmarshal(plaintext)
+	ok := hs.sessionState.unmarshal(plaintext, c)
 	if !ok {
 		return false
 	}
