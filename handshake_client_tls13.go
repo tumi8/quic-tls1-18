@@ -284,6 +284,7 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		return unexpectedMessageError(serverHello, msg)
 	}
 	hs.c.serverHello = serverHello
+	hs.serverHello = serverHello
 
 	if err := hs.checkServerHelloOrHRR(); err != nil {
 		return err
